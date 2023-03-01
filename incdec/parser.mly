@@ -8,7 +8,7 @@
 %token INC
 %token DEC
 
-%start <int64> expr
+%start <Syntax.expr> expr
 %%
 
 expr:

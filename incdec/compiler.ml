@@ -4,6 +4,7 @@
    See LICENSE for details
 *)
 open Printf
+open Syntax
 
 type reg =
   | RAX
@@ -14,6 +15,7 @@ type arg =
 
 type instruction =
   | IMov of arg * arg
+  | IAdd of arg * arg
 
 let reg_to_string (r : reg) : string =
   match r with
@@ -27,26 +29,30 @@ let arg_to_string ( a : arg ) : string =
 let instr_to_string (i : instruction) : string =
   match i with
   | IMov (l, r) -> "mov " ^ arg_to_string l ^ ", " ^ arg_to_string r
+  | IAdd (l, r) -> "add " ^ arg_to_string l ^ ", " ^ arg_to_string r
 
 let rec asm_to_string (asm : instruction list) : string =
   (* volvemos pronto *)
   match asm with
   | [] -> ""
-  | a :: instrs -> instr_to_string a ^ asm_to_string instrs 
+  | a :: instrs -> instr_to_string a ^ "\n" ^ asm_to_string instrs 
 
+let rec compile_expr (e : expr) : instruction list =
+  match e with
+  | Num n -> [ IMov (Reg RAX, Const n) ]
+  | Inc e -> compile_expr e @ [ IAdd (Reg RAX, Const 1L) ] 
+  | Dec e -> compile_expr e @ [ IAdd (Reg RAX, Const (-1L)) ]
+  (* | _ -> failwith "No se compilar eso" *)
 
-
-
-(* A very sophisticated compiler - insert the given integer into the mov
-instruction at the correct place *)
-(* esto esta roto!! *)
-let compile (program : int64) : string =
+let compile_prog (program : expr) : string =
+  let instrs = compile_expr program in
+  let asm_string = asm_to_string instrs in
   sprintf "
 section .text
 global our_code_starts_here
 our_code_starts_here:
-  mov RAX, %Ld
-  ret\n" program;;
+  %s
+  ret\n" asm_string;;
 
 (* Some OCaml boilerplate for reading files and command-line arguments *)
 let () =
@@ -54,5 +60,5 @@ let () =
   let lexbuf = Lexing.from_channel input_file in
   let input_program = Parser.expr Lexer.read lexbuf in
   close_in input_file;
-  let program = (compile input_program) in
+  let program = (compile_prog input_program) in
   printf "%s\n" program;;
