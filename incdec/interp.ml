@@ -1,3 +1,8 @@
+(* interp.ml - Interpreter for  Abstract Syntax Tree for our language
+   Copyright (2023) Humberto Ortiz-Zuazaga <humberto.ortiz@upr.edu>
+   See LICENSE for details
+*)
+
 open Syntax
 
 let rec lookup (x : string) (env : (string * int64) list) : int64  =
