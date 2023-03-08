@@ -21,3 +21,11 @@ let interp ( e : expr ) : int64 =
     | Let (x, e, f) -> helper (f, (x, (helper (e, env))) :: env)
   in
   helper (e, [])
+
+(* Some OCaml boilerplate for reading files and command-line arguments *)
+let () =
+  let input_file = (open_in (Sys.argv.(1))) in
+  let lexbuf = Lexing.from_channel input_file in
+  let input_program = Parser.expr Lexer.read lexbuf in
+  close_in input_file;
+  print_string (Int64.to_string (interp input_program))

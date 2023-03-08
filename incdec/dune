@@ -3,4 +3,4 @@
 
 (ocamllex lexer)
 
-(executable (name compiler))
+(executables (names compiler interp pretty))
