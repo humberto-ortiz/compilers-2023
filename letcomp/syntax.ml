@@ -7,3 +7,5 @@ type expr =
   | Num of int64
   | Inc of expr
   | Dec of expr
+  | Id of string
+  | Let of string * expr * expr
