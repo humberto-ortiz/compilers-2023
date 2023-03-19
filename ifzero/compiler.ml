@@ -1,5 +1,5 @@
-(* compiler.ml - compiler for epcp language 
-   Modified from Ben Lerner's compiler from Lecture 2
+(* compiler.ml - compiler for ifzero language 
+   Modified from Ben Lerner's compiler from Lecture 2, 3, and 4.
    Copyright (2023) Humberto Ortiz-Zuazaga <humberto.ortiz@upr.edu>
    See LICENSE for details
 *)
@@ -18,10 +18,6 @@ type arg =
 type instruction =
   | IMov of arg * arg
   | IAdd of arg * arg
-  | ICmp of arg * arg
-  | IJmp of string
-  | IJe of string
-  | ILabel of string
 
 let reg_to_string (r : reg) : string =
   match r with
@@ -32,16 +28,12 @@ let arg_to_string ( a : arg ) : string =
   match a with
   | Const entero -> Int64.to_string entero
   | Reg r -> reg_to_string r
-  | RegOffset (r, o) -> "[" ^ (reg_to_string r) ^ " " ^ (string_of_int o) ^ "]"
+  | RegOffset (r, slot) -> "[" ^ reg_to_string r ^ " " ^ string_of_int slot ^ "]"
 
 let instr_to_string (i : instruction) : string =
   match i with
-  | IMov (l, r) -> "mov " ^ arg_to_string l ^ ", " ^ arg_to_string r
-  | IAdd (l, r) -> "add " ^ arg_to_string l ^ ", " ^ arg_to_string r
-  | ICmp (l, r) -> "cmp " ^ arg_to_string l ^ ", " ^ arg_to_string r
-  | IJmp l -> "jmp " ^ l
-  | IJe label -> "je " ^ label
-  | ILabel label -> label ^ ":"
+  | IMov (l, r) -> "\tmov " ^ arg_to_string l ^ ", " ^ arg_to_string r
+  | IAdd (l, r) -> "\tadd " ^ arg_to_string l ^ ", " ^ arg_to_string r
 
 let rec asm_to_string (asm : instruction list) : string =
   (* volvemos pronto *)
@@ -54,35 +46,29 @@ type env = (string * int) list
 let rec lookup name env =
   match env with
   | [] -> failwith ("No se encontro " ^ name ^ "\n")
-  | (id, i)::rest -> if id = name then i else (lookup name rest) 
+  | (id, i)::rest -> if id = name then i else (lookup name rest)
 
 let add name env =
   let slot = 1 + (List.length env) in
   ((name, slot)::env, slot)
 
-let rec compile_expr (e : expr) (env : env) : instruction list =
-  match e with
-  | Num n -> [ IMov (Reg RAX, Const n) ]
-  | Inc e -> compile_expr e env @ [ IAdd (Reg RAX, Const 1L) ] 
-  | Dec e -> compile_expr e env @ [ IAdd (Reg RAX, Const (-1L)) ]
-  | Id x -> [ IMov (Reg RAX, RegOffset (RSP, ~-1 * 8 * (lookup x env) )) ]
-  | Let (x, i, d) -> 
-     let (env', pos) = add x env in
-     compile_expr i env @
-       [ IMov (RegOffset (RSP, ~-1 * 8 * pos) , Reg RAX) ] @
-         compile_expr d env'
-  | If (e1, e2, e3) ->
-     (compile_expr e1 env) @
-       [ ICmp (Reg RAX, Const 0L) ;
-         IJe "segundo" ] @
-         (compile_expr e2 env) @
-           [ IJmp "end" ; 
-           ILabel "segundo" ] @
-             (compile_expr e3 env) @
-               [ ILabel "end" ]
-  (* | _ -> failwith "No se compilar eso" *)
+type tag = int
 
-let compile_prog (program : expr) : string =
+let rec compile_expr (e : tag expr) (env : env) : instruction list =
+  match e with
+  | ENumber (n, _) -> [ IMov (Reg RAX, Const n) ]
+  | EPrim1 (Inc, e, _) -> compile_expr e env @ [ IAdd (Reg RAX, Const 1L) ]
+  | EPrim1 (Dec, e, _) -> compile_expr e env @ [ IAdd (Reg RAX, Const (-1L)) ]
+  | ELet (id, init, body, _) ->
+     let (env', pos) = add id env in
+     compile_expr init env @
+       [ IMov (RegOffset (RSP, ~-1 * 8 * pos) , Reg RAX) ] @
+         compile_expr body env'
+  | EId (id, _) -> [ IMov (Reg RAX, RegOffset (RSP, ~-1 * 8 * (lookup id env) )) ]
+  | _ -> failwith "No se compilar eso!"
+
+
+let compile_prog (program : tag expr) : string =
   let instrs = compile_expr program [] in
   let asm_string = asm_to_string instrs in
   sprintf "
@@ -92,11 +78,32 @@ our_code_starts_here:
   %s
   ret\n" asm_string;;
 
+let tag (e: 'a expr) : tag expr =
+  let rec help (e : 'a expr) (cur : tag) : (tag expr * tag) =
+    match e with
+    | ENumber (n, _) ->
+       (ENumber (n, cur), cur)
+    | EPrim1(op, e, _) ->
+      let (tag_e, next_tag) = help e (cur + 1) in
+      (EPrim1(op, tag_e, cur), next_tag)
+    | EId (id, _) -> (EId (id, cur), cur)
+    | ELet (id, init, body, _) ->
+       let (tag_i, next_tag) = help init (cur + 1) in
+       let (tag_b, next_tag) = help body (next_tag + 1) in
+       (ELet (id, tag_i, tag_b, next_tag), next_tag)
+    | _ -> failwith "No se tagear eso"
+  in
+  let (tagged, _) = help e 1 in tagged;;
+
 (* Some OCaml boilerplate for reading files and command-line arguments *)
+(* Use code from https://mukulrathi.com/create-your-own-programming-language/parsing-ocamllex-menhir/ to catch syntax errors *)
 let () =
   let input_file = (open_in (Sys.argv.(1))) in
-  let lexbuf = Lexing.from_channel input_file in
-  let input_program = Parser.expr Lexer.read lexbuf in
+  let maybe_program = Front.parse_file input_file in
   close_in input_file;
-  let program = (compile_prog input_program) in
-  printf "%s\n" program;;
+  match maybe_program with
+  | Ok input_program ->
+     let tagged = tag input_program in
+     let program = (compile_prog tagged) in
+     printf "%s\n" program
+  | Error e -> eprintf "%s" (Core.Error.to_string_hum e) ; exit 1

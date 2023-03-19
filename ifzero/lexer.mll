@@ -9,6 +9,8 @@ exception SyntaxError of string
 }
 
 let int = '-'?['0'-'9']+
+let letter = ['a'-'z' 'A'-'Z']
+let identifiers = letter+
 
 rule read =
      parse
@@ -19,4 +21,7 @@ rule read =
      | ')' { RPAREN }
      | "inc" { INC }
      | "dec" { DEC }
-     | "if" { IF }
+     | "if"  { IF }
+     | "let" { LET }
+     | identifiers as id { ID id }
+     | _ { raise (SyntaxError ("Illegal character - " ^ Lexing.lexeme lexbuf)) }

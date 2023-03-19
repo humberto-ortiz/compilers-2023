@@ -3,4 +3,6 @@
 
 (ocamllex lexer)
 
-(executables (names compiler pretty))
+(executable 
+   (name compiler)
+   (libraries core fmt))

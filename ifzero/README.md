@@ -1,22 +1,45 @@
-# letcomp - a compiler that can almost compile let and identifiers
+# ifzero - a compiler that can almost compile if expressions
 
-This directory contains a broken compiler for let and identifiers. We've got
-most of a parser made, but it's missing your homework parser.
+This directory contains a broken compiler for if expressions. We've
+got most of a parser made. I've refactored the compiler using code
+from the [bolt
+compiler](https://mukulrathi.com/create-your-own-programming-language/parsing-ocamllex-menhir/)
+for lexing and parsing while tracking positions for better error
+messages.
 
-We can compile hand-built abstract syntax trees:
+To do this we need to install some extra packages. If you see build errors like:
+```
+% dune build
+File "dune", line 8, characters 19-22:
+8 |    (libraries core fmt))
+                       ^^^
+Error: Library "fmt" not found.
+-> required by _build/default/compiler.exe
+-> required by alias all
+-> required by alias default
+```
+
+Install the missing libraries with
+```
+$ opam install fmt core
+```
+
+After that, the new compiler can catch syntax errors:
+```
+$ make badinc.run
+dune exec ./compiler.exe badinc.int > badinc.s
+Done: 88% (38/43, 5 left) (jobs: 0)Line:1 Position:4: syntax error
+make: *** [Makefile:13: badinc.s] Error 1
+rm badinc.s
+```
+
+You can see the positions if you run the front end:
 
 ```
 $ dune utop
-utop # print_string (compile_prog (Let ("x", Num 1L, Inc (Id "x"))));;
-
-section .text
-global our_code_starts_here
-our_code_starts_here:
-  mov RAX, 1
-mov [RSP -8], RAX
-mov RAX, [RSP -8]
-add RAX, 1
-
-  ret
-- : unit = ()
+utop # Front.parse_file (open_in "10.int");;
+- : (Lexing.position expr, Core.Error.t) result =
+Core.Ok
+ (ENumber (10L,
+   {Lexing.pos_fname = ""; pos_lnum = 1; pos_bol = 0; pos_cnum = 0}))
 ```
