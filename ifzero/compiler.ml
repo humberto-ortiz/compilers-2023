@@ -18,6 +18,10 @@ type arg =
 type instruction =
   | IMov of arg * arg
   | IAdd of arg * arg
+  | ICmp of arg * arg
+  | IJmp of string
+  | IJe of string
+  | ILabel of string
 
 let reg_to_string (r : reg) : string =
   match r with
@@ -34,6 +38,10 @@ let instr_to_string (i : instruction) : string =
   match i with
   | IMov (l, r) -> "\tmov " ^ arg_to_string l ^ ", " ^ arg_to_string r
   | IAdd (l, r) -> "\tadd " ^ arg_to_string l ^ ", " ^ arg_to_string r
+  | ICmp (l, r) -> "\tcmp " ^ arg_to_string l ^ ", " ^ arg_to_string r
+  | IJmp l -> "\tjmp " ^ l
+  | IJe label -> "\tje " ^ label
+  | ILabel label -> label ^ ":"
 
 let rec asm_to_string (asm : instruction list) : string =
   (* volvemos pronto *)
@@ -65,7 +73,16 @@ let rec compile_expr (e : tag expr) (env : env) : instruction list =
        [ IMov (RegOffset (RSP, ~-1 * 8 * pos) , Reg RAX) ] @
          compile_expr body env'
   | EId (id, _) -> [ IMov (Reg RAX, RegOffset (RSP, ~-1 * 8 * (lookup id env) )) ]
-  | _ -> failwith "No se compilar eso!"
+  | EIf (c, t, e, _) ->
+      (compile_expr c env)
+    @ [ ICmp (Reg RAX, Const 0L) ;
+        IJe "segundo" ] 
+    @    (compile_expr t env) @
+           [ IJmp "end" ; 
+           ILabel "segundo" ] @
+             (compile_expr e env) @
+               [ ILabel "end" ]
+  (* | _ -> failwith "No se compilar eso!" *)
 
 
 let compile_prog (program : tag expr) : string =
@@ -91,7 +108,12 @@ let tag (e: 'a expr) : tag expr =
        let (tag_i, next_tag) = help init (cur + 1) in
        let (tag_b, next_tag) = help body (next_tag + 1) in
        (ELet (id, tag_i, tag_b, next_tag), next_tag)
-    | _ -> failwith "No se tagear eso"
+    | EIf (c, thn, els, _) ->
+      let (tag_c, next_tag) = help c (cur + 1) in
+      let (tag_t, next_tag) = help thn (next_tag + 1) in
+      let (tag_e, next_tag) = help els (next_tag + 1) in
+        (EIf (tag_c, tag_t, tag_e, cur), next_tag)
+    (* | _ -> failwith "No se tagear eso" *)
   in
   let (tagged, _) = help e 1 in tagged;;
 
