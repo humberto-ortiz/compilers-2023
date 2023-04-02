@@ -21,6 +21,9 @@ rule read =
      | ')' { RPAREN }
      | "inc" { INC }
      | "dec" { DEC }
+     | '+' { ADD }
+     | '-' { SUB }
+     | '*' { MULT }
      | "if"  { IF }
      | "let" { LET }
      | identifiers as id { ID id }

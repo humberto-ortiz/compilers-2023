@@ -8,6 +8,9 @@
 %token RPAREN
 %token INC
 %token DEC
+%token ADD
+%token SUB
+%token MULT
 %token IF
 %token LET
 
@@ -18,6 +21,9 @@ expr:
   | i = INT { ENumber (i, $startpos) }
   | LPAREN INC e = expr RPAREN { EPrim1 (Inc, e, $startpos) }
   | LPAREN DEC e = expr RPAREN { EPrim1 (Dec, e, $startpos) }
+  | LPAREN l = expr ADD r = expr RPAREN { EPrim2 (Plus, l, r, $startpos) }
+  | LPAREN l = expr SUB r = expr RPAREN { EPrim2 (Minus, l, r, $startpos) }
+  | LPAREN l = expr MULT r = expr RPAREN { EPrim2 (Times, l, r, $startpos) }
   | LPAREN IF c = expr t = expr e = expr RPAREN { EIf (c, t, e, $startpos) }
   | LPAREN LET id = ID init = expr body = expr RPAREN { ELet (id, init, body, $startpos) }
   | id = ID { Syntax.EId (id, $startpos) }

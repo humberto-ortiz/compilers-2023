@@ -62,6 +62,13 @@ let add name env =
 
 type tag = int
 
+let rec anf (e : tag expr)  : 'a aexpr =
+  match e with
+  | ENumber (n, tag) -> AImm (INumber (n, tag))
+  | EPrim1 (op, e, tag) ->
+     let varname = "_prim1" ^ (string_of_int tag) in
+     ALet (varname, anf e, APrim1(op, IId (varname, tag), tag)
+
 let rec compile_expr (e : tag expr) (env : env) : instruction list =
   match e with
   | ENumber (n, _) -> [ IMov (Reg RAX, Const n) ]
@@ -73,15 +80,17 @@ let rec compile_expr (e : tag expr) (env : env) : instruction list =
        [ IMov (RegOffset (RSP, ~-1 * 8 * pos) , Reg RAX) ] @
          compile_expr body env'
   | EId (id, _) -> [ IMov (Reg RAX, RegOffset (RSP, ~-1 * 8 * (lookup id env) )) ]
-  | EIf (c, t, e, _) ->
+  | EIf (c, t, e, tag) ->
+     let lab1 = "segundo" ^ (string_of_int tag) in
+     let lab2 = "end" ^ (string_of_int tag) in
       (compile_expr c env)
     @ [ ICmp (Reg RAX, Const 0L) ;
-        IJe "segundo" ] 
+        IJe lab1 ] 
     @    (compile_expr t env) @
-           [ IJmp "end" ; 
-           ILabel "segundo" ] @
+           [ IJmp lab2 ; 
+           ILabel lab1 ] @
              (compile_expr e env) @
-               [ ILabel "end" ]
+               [ ILabel lab2 ]
   (* | _ -> failwith "No se compilar eso!" *)
 
 
