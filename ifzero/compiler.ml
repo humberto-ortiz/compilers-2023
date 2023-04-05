@@ -67,35 +67,55 @@ let rec anf (e : tag expr)  : 'a aexpr =
   | ENumber (n, tag) -> AImm (INumber (n, tag))
   | EPrim1 (op, e, tag) ->
      let varname = "_prim1" ^ (string_of_int tag) in
-     ALet (varname, anf e, APrim1(op, IId (varname, tag), tag)
-
-let rec compile_expr (e : tag expr) (env : env) : instruction list =
-  match e with
-  | ENumber (n, _) -> [ IMov (Reg RAX, Const n) ]
-  | EPrim1 (Inc, e, _) -> compile_expr e env @ [ IAdd (Reg RAX, Const 1L) ]
-  | EPrim1 (Dec, e, _) -> compile_expr e env @ [ IAdd (Reg RAX, Const (-1L)) ]
-  | ELet (id, init, body, _) ->
-     let (env', pos) = add id env in
-     compile_expr init env @
-       [ IMov (RegOffset (RSP, ~-1 * 8 * pos) , Reg RAX) ] @
-         compile_expr body env'
-  | EId (id, _) -> [ IMov (Reg RAX, RegOffset (RSP, ~-1 * 8 * (lookup id env) )) ]
+     ALet (varname, anf e, APrim1(op, IId (varname, tag), tag), tag)
+  | EPrim2 (op, l, r, tag) ->
+     let varname = "_prim2" ^ (string_of_int tag) in
+     ALet (varname ^ "l", anf l, 
+           ALet( varname ^ "r", anf r, 
+                 APrim2 (op, IId (varname ^ "l", tag), IId (varname ^ "r", tag), tag) , tag), tag) 
   | EIf (c, t, e, tag) ->
+     let varname = "_if" ^ (string_of_int tag) in
+     ALet (varname, anf c, 
+           AIf (IId (varname, tag), anf t, anf e, tag), tag)
+  | ELet (v, i, b, tag) ->
+     ALet (v, anf i, anf b, tag)
+  | EId (v, tag) -> 
+     AImm (IId (v, tag))
+
+let rec compile_aexpr (e : tag aexpr) (env : env) : instruction list =
+  let imm_to_arg imm =
+    match imm with
+      | INumber (n, _) ->  Const n
+      | IId (id, _) -> RegOffset (RSP, ~-1 * 8 * (lookup id env) )
+  in
+  match e with
+  | AImm imm -> [ IMov (Reg RAX, imm_to_arg imm) ]
+  | APrim1 (Inc, e, _) ->  compile_aexpr (AImm e) env @ [ IAdd (Reg RAX, Const 1L) ]
+  | APrim1 (Dec, e, _) -> compile_aexpr (AImm e) env @ [ IAdd (Reg RAX, Const (-1L)) ]
+  | APrim2 (Plus, l, r, _) ->
+     [ IMov (Reg RAX, imm_to_arg l) ;
+       IAdd (Reg RAX, imm_to_arg r) ]
+  | ALet (id, init, body, _) ->
+     let (env', pos) = add id env in
+     compile_aexpr init env @
+       [ IMov (RegOffset (RSP, ~-1 * 8 * pos) , Reg RAX) ] @
+         compile_aexpr body env'
+  | AIf (c, t, e, tag) ->
      let lab1 = "segundo" ^ (string_of_int tag) in
      let lab2 = "end" ^ (string_of_int tag) in
-      (compile_expr c env)
+      (compile_aexpr (AImm c) env)
     @ [ ICmp (Reg RAX, Const 0L) ;
         IJe lab1 ] 
-    @    (compile_expr t env) @
+    @    (compile_aexpr t env) @
            [ IJmp lab2 ; 
            ILabel lab1 ] @
-             (compile_expr e env) @
+             (compile_aexpr e env) @
                [ ILabel lab2 ]
-  (* | _ -> failwith "No se compilar eso!" *)
+  | _ -> failwith "No se compilar eso!"
 
 
-let compile_prog (program : tag expr) : string =
-  let instrs = compile_expr program [] in
+let compile_prog (program : tag aexpr) : string =
+  let instrs = compile_aexpr program [] in
   let asm_string = asm_to_string instrs in
   sprintf "
 section .text
@@ -112,6 +132,10 @@ let tag (e: 'a expr) : tag expr =
     | EPrim1(op, e, _) ->
       let (tag_e, next_tag) = help e (cur + 1) in
       (EPrim1(op, tag_e, cur), next_tag)
+    | EPrim2(op, l, r, _) ->
+       let (tag_l, left_tag) = help l (cur + 1) in
+       let (tag_r, right_tag) = help r (left_tag + 1) in
+       (EPrim2 (op, tag_l, tag_r, cur), right_tag)
     | EId (id, _) -> (EId (id, cur), cur)
     | ELet (id, init, body, _) ->
        let (tag_i, next_tag) = help init (cur + 1) in
@@ -135,6 +159,7 @@ let () =
   match maybe_program with
   | Ok input_program ->
      let tagged = tag input_program in
-     let program = (compile_prog tagged) in
+     let anfed = anf tagged in
+     let program = (compile_prog anfed) in
      printf "%s\n" program
   | Error e -> eprintf "%s" (Core.Error.to_string_hum e) ; exit 1
