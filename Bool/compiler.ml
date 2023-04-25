@@ -9,6 +9,8 @@ open Syntax
 type reg =
   | RAX
   | RSP
+  | RDI
+  (* | RBP *)
 
 type arg =
   | Const of int64
@@ -19,14 +21,19 @@ type instruction =
   | IMov of arg * arg
   | IAdd of arg * arg
   | ICmp of arg * arg
+  | ITest of arg * arg
   | IJmp of string
+  | IJnz of string
   | IJe of string
   | ILabel of string
+  | ICall of string
 
 let reg_to_string (r : reg) : string =
   match r with
   | RAX -> "RAX"
   | RSP -> "RSP"
+  | RDI -> "RDI"
+  (* | RBP -> "RBP" *)
 
 let arg_to_string ( a : arg ) : string =
   match a with
@@ -39,9 +46,12 @@ let instr_to_string (i : instruction) : string =
   | IMov (l, r) -> "\tmov " ^ arg_to_string l ^ ", " ^ arg_to_string r
   | IAdd (l, r) -> "\tadd " ^ arg_to_string l ^ ", " ^ arg_to_string r
   | ICmp (l, r) -> "\tcmp " ^ arg_to_string l ^ ", " ^ arg_to_string r
+  | ITest (l, r) -> "\ttest " ^ arg_to_string l ^ ", " ^ arg_to_string r
   | IJmp l -> "\tjmp " ^ l
+  | IJnz l -> "\tjnz " ^ l
   | IJe label -> "\tje " ^ label
   | ILabel label -> label ^ ":"
+  | ICall label -> "\tcall " ^ label
 
 let rec asm_to_string (asm : instruction list) : string =
   (* volvemos pronto *)
@@ -93,20 +103,34 @@ let rec compile_aexpr (e : tag aexpr) (env : env) : instruction list =
     match imm with
       | INumber (n, _) ->  
          if (n < min_cobra_int || n > max_cobra_int ) then
-           Const n
-         else
            failwith ("Integer overflow " ^ (Int64.to_string n))
+         else
+           Const (Int64.mul n  2L)
       | IBool (false, _) -> Const const_false
       | IBool (true, _) -> Const const_true
       | IId (id, _) -> RegOffset (RSP, ~-1 * 8 * (lookup id env) )
   in
   match e with
   | AImm imm -> [ IMov (Reg RAX, imm_to_arg imm) ]
-  | APrim1 (Inc, e, _) ->  compile_aexpr (AImm e) env @ [ IAdd (Reg RAX, Const 1L) ]
-  | APrim1 (Dec, e, _) -> compile_aexpr (AImm e) env @ [ IAdd (Reg RAX, Const (-1L)) ]
+  | APrim1 (Inc, e, _) ->  compile_aexpr (AImm e) env 
+                           @ [ ITest (Reg RAX, Const 0x01L) ;
+                               IJnz "error_not_number" ;
+                               IAdd (Reg RAX, Const 2L) ]
+  | APrim1 (Dec, e, _) -> compile_aexpr (AImm e) env 
+                          @ [  ITest (Reg RAX, Const 0x01L) ;
+                               IJnz "error_not_number" ;
+                               IAdd (Reg RAX, Const (-2L)) ]
+  | APrim1 (Print, e, _) ->
+     compile_aexpr (AImm e) env @
+       [ IMov (Reg RDI, Reg RAX) ;
+         ICall "print" ]
   | APrim2 (Plus, l, r, _) ->
      [ IMov (Reg RAX, imm_to_arg l) ;
        IAdd (Reg RAX, imm_to_arg r) ]
+  | APrim2 (Greater, l, r, _) ->
+     [ IMov (Reg RAX, imm_to_arg l) ;
+       ICmp (Reg RAX, imm_to_arg r) ]
+
   | ALet (id, init, body, _) ->
      let (env', pos) = add id env in
      compile_aexpr init env @
@@ -131,16 +155,30 @@ let compile_prog (program : tag aexpr) : string =
   let asm_string = asm_to_string instrs in
   sprintf "
 section .text
+extern error
+extern print
 global our_code_starts_here
 our_code_starts_here:
+  push RBP          ; save (previous, caller's) RBP on stack
+  mov RBP, RSP      ; make current RSP the new RBP
   %s
-  ret\n" asm_string;;
+  mov RSP, RBP      ; restore value of RSP to that just before call
+                  ; now, value at [RSP] is caller's (saved) RBP
+  pop RBP           ; so: restore caller's RBP from stack [RSP]
+  ret
+
+error_not_number:
+  mov RDI, 1
+  mov RSI, RAX
+  jmp error
+\n" asm_string;;
 
 let tag (e: 'a expr) : tag expr =
   let rec help (e : 'a expr) (cur : tag) : (tag expr * tag) =
     match e with
     | ENumber (n, _) ->
        (ENumber (n, cur), cur)
+    | EBool (b, _) -> (EBool (b, cur), cur)
     | EPrim1(op, e, _) ->
       let (tag_e, next_tag) = help e (cur + 1) in
       (EPrim1(op, tag_e, cur), next_tag)

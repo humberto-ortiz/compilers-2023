@@ -23,6 +23,7 @@ rule read =
      | ')' { RPAREN }
      | "inc" { INC }
      | "dec" { DEC }
+     | "print" { PRINT }
      | '+' { ADD }
      | '-' { SUB }
      | '*' { MULT }

@@ -6,6 +6,7 @@
 type prim1 =
   | Inc
   | Dec
+  | Print
 
 type prim2 =
   | Plus
@@ -21,6 +22,7 @@ type 'a expr =
   | EId of string * 'a
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
+  | EApp of 'a expr * 'a expr * 'a
 
 type 'a immexpr =
   | INumber of int64 * 'a
