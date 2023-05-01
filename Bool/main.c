@@ -41,6 +41,15 @@ SNAKEVAL print(SNAKEVAL val) {
   return val;
 }
 
+SNAKEVAL doble(SNAKEVAL val) {
+  if ((val & BOOL_TAG) == 0) { // val is even ==> number
+    val *= 2;
+  } else {
+    printf("esperaba un numero :  %#018lx", val);
+  }
+  return val;
+}
+
 int main(int argc, char** argv) {
   int64_t result = our_code_starts_here();
   print(result);

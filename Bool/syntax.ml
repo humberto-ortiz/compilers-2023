@@ -22,7 +22,7 @@ type 'a expr =
   | EId of string * 'a
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
-  | EApp of 'a expr * 'a expr * 'a
+  | EApp of string * 'a expr * 'a
 
 type 'a immexpr =
   | INumber of int64 * 'a
@@ -35,3 +35,11 @@ type 'a aexpr =
   | APrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
   | ALet of string * 'a aexpr * 'a aexpr * 'a
   | AIf of 'a immexpr * 'a aexpr * 'a aexpr * 'a
+  | AApp of string * 'a immexpr * 'a
+
+type 'a decl =     
+(* function name, argument name, body, tag *)
+  | DFun of string * string * 'a expr * 'a
+
+type 'a program =
+  | Program of 'a decl list * 'a expr

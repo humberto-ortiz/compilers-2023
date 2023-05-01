@@ -92,6 +92,10 @@ let rec anf (e : tag expr)  : 'a aexpr =
      ALet (v, anf i, anf b, tag)
   | EId (v, tag) -> 
      AImm (IId (v, tag))
+  | EApp (f, a, tag) -> 
+     let varname = "_app" ^ (string_of_int tag) in
+       ALet (varname ^ "a", anf a,
+         AApp (f, IId (varname ^ "a", tag), tag), tag) 
 
 let const_true  = 0xFFFFFFFFFFFFFFFFL
 let const_false = 0x7FFFFFFFFFFFFFFFL
@@ -120,10 +124,10 @@ let rec compile_aexpr (e : tag aexpr) (env : env) : instruction list =
                           @ [  ITest (Reg RAX, Const 0x01L) ;
                                IJnz "error_not_number" ;
                                IAdd (Reg RAX, Const (-2L)) ]
-  | APrim1 (Print, e, _) ->
-     compile_aexpr (AImm e) env @
+  | AApp (f, a, _) ->
+     compile_aexpr (AImm a) env @
        [ IMov (Reg RDI, Reg RAX) ;
-         ICall "print" ]
+         ICall f ]
   | APrim2 (Plus, l, r, _) ->
      [ IMov (Reg RAX, imm_to_arg l) ;
        IAdd (Reg RAX, imm_to_arg r) ]
@@ -156,6 +160,7 @@ let compile_prog (program : tag aexpr) : string =
   sprintf "
 section .text
 extern error
+extern doble
 extern print
 global our_code_starts_here
 our_code_starts_here:
@@ -196,6 +201,9 @@ let tag (e: 'a expr) : tag expr =
       let (tag_t, next_tag) = help thn (next_tag + 1) in
       let (tag_e, next_tag) = help els (next_tag + 1) in
         (EIf (tag_c, tag_t, tag_e, cur), next_tag)
+    | EApp (f, a, _) ->
+       let (tag_a, next_tag) = help a (cur + 1) in
+       (EApp (f, tag_a, cur), next_tag)
     (* | _ -> failwith "No se tagear eso" *)
   in
   let (tagged, _) = help e 1 in tagged;;

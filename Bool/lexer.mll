@@ -23,12 +23,12 @@ rule read =
      | ')' { RPAREN }
      | "inc" { INC }
      | "dec" { DEC }
-     | "print" { PRINT }
      | '+' { ADD }
      | '-' { SUB }
      | '*' { MULT }
      | '>' { GREATER }
      | "if"  { IF }
      | "let" { LET }
+     | "def" { DEF }
      | identifiers as id { ID id }
      | _ { raise (SyntaxError ("Illegal character - " ^ Lexing.lexeme lexbuf)) }
