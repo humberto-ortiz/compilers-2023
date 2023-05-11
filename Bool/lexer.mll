@@ -27,6 +27,7 @@ rule read =
      | '-' { SUB }
      | '*' { MULT }
      | '>' { GREATER }
+     | "%%" { MARK }
      | "if"  { IF }
      | "let" { LET }
      | "def" { DEF }

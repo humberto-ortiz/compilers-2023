@@ -2,6 +2,8 @@
    Copyright (2023) Humberto Ortiz-Zuazaga <humberto.ortiz@upr.edu>
    See LICENSE for details
 */
+%{ open Syntax %}
+
 %token <int64> INT
 %token <string> ID
 %token <bool> BOOL
@@ -16,13 +18,14 @@
 %token IF
 %token LET
 %token DEF
+%token MARK
 
 %start <'a Syntax.program> program
 %%
 
 program:
   | e = expr { Program ([], e) }
-  | ds = decls e = expr { Program (ds, e) }
+  | ds = decls MARK e = expr { Syntax.Program (ds, e) }
 
 decls:
   | d = decl { [d] }

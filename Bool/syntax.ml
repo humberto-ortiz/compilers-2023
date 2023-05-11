@@ -43,3 +43,9 @@ type 'a decl =
 
 type 'a program =
   | Program of 'a decl list * 'a expr
+
+type 'a adecl =
+  | AFun of string * string * 'a aexpr * 'a
+
+type 'a aprogram =
+  | AProgram of 'a adecl list * 'a aexpr

@@ -10,7 +10,7 @@ type reg =
   | RAX
   | RSP
   | RDI
-  (* | RBP *)
+  | RBP
 
 type arg =
   | Const of int64
@@ -27,13 +27,16 @@ type instruction =
   | IJe of string
   | ILabel of string
   | ICall of string
+  | IRet
+  | IPush of arg
+  | IPop of arg
 
 let reg_to_string (r : reg) : string =
   match r with
   | RAX -> "RAX"
   | RSP -> "RSP"
   | RDI -> "RDI"
-  (* | RBP -> "RBP" *)
+  | RBP -> "RBP"
 
 let arg_to_string ( a : arg ) : string =
   match a with
@@ -52,6 +55,9 @@ let instr_to_string (i : instruction) : string =
   | IJe label -> "\tje " ^ label
   | ILabel label -> label ^ ":"
   | ICall label -> "\tcall " ^ label
+  | IRet -> "\tret"
+  | IPush a -> "\tpush " ^ arg_to_string a
+  | IPop a -> "\tpop " ^ arg_to_string a
 
 let rec asm_to_string (asm : instruction list) : string =
   (* volvemos pronto *)
@@ -96,6 +102,14 @@ let rec anf (e : tag expr)  : 'a aexpr =
      let varname = "_app" ^ (string_of_int tag) in
        ALet (varname ^ "a", anf a,
          AApp (f, IId (varname ^ "a", tag), tag), tag) 
+
+let anf_program (p : 'a program) : 'a aprogram =
+  let help d =
+    match d with
+    | DFun (f, a, b, tag) -> AFun (f, a, anf b, tag)
+  in
+  match p with
+  | Program (ds, e) -> AProgram (List.map help ds, anf e) 
 
 let const_true  = 0xFFFFFFFFFFFFFFFFL
 let const_false = 0x7FFFFFFFFFFFFFFFL
@@ -153,14 +167,33 @@ let rec compile_aexpr (e : tag aexpr) (env : env) : instruction list =
                [ ILabel lab2 ]
   | _ -> failwith "No se compilar eso!"
 
+let compile_def d =
+  match d with
+      | AFun (f, a, body, _) ->
+         let (env', _) = add a [] in
+         [ ILabel f ;
+           IPush (Reg RBP) ;
+           IMov (Reg RBP, Reg RSP) ;
+           IMov (RegOffset (RSP, ~-1 * 8 * 1) , Reg RDI)
+         ] @
+           compile_aexpr body env' @
+             [ IMov (Reg RSP, Reg RBP);
+               IPop (Reg RBP);
+               IRet ]
 
-let compile_prog (program : tag aexpr) : string =
-  let instrs = compile_aexpr program [] in
+let compile_defs ds =
+  List.map compile_def ds
+
+let compile_prog (program : tag aprogram) : string =
+  match program with
+| AProgram (ds, e) ->
+  let compiled_defs = compile_defs ds in
+  let defs_string = asm_to_string (List.flatten compiled_defs) in
+  let instrs = compile_aexpr e [] in
   let asm_string = asm_to_string instrs in
   sprintf "
 section .text
 extern error
-extern doble
 extern print
 global our_code_starts_here
 our_code_starts_here:
@@ -172,41 +205,64 @@ our_code_starts_here:
   pop RBP           ; so: restore caller's RBP from stack [RSP]
   ret
 
+; Nuestras funciones
+%s
+
 error_not_number:
   mov RDI, 1
   mov RSI, RAX
   jmp error
-\n" asm_string;;
+\n" asm_string defs_string;;
 
-let tag (e: 'a expr) : tag expr =
-  let rec help (e : 'a expr) (cur : tag) : (tag expr * tag) =
+let tag_program (p : 'a program) : tag program =
+  let  rec tag_expr (e : 'a expr) (cur : tag) : (tag expr * tag) =
     match e with
     | ENumber (n, _) ->
        (ENumber (n, cur), cur)
     | EBool (b, _) -> (EBool (b, cur), cur)
     | EPrim1(op, e, _) ->
-      let (tag_e, next_tag) = help e (cur + 1) in
-      (EPrim1(op, tag_e, cur), next_tag)
+       let (tag_e, next_tag) = tag_expr e (cur + 1) in
+       (EPrim1(op, tag_e, cur), next_tag)
     | EPrim2(op, l, r, _) ->
-       let (tag_l, left_tag) = help l (cur + 1) in
-       let (tag_r, right_tag) = help r (left_tag + 1) in
+       let (tag_l, left_tag) = tag_expr l (cur + 1) in
+       let (tag_r, right_tag) = tag_expr r (left_tag + 1) in
        (EPrim2 (op, tag_l, tag_r, cur), right_tag)
     | EId (id, _) -> (EId (id, cur), cur)
     | ELet (id, init, body, _) ->
-       let (tag_i, next_tag) = help init (cur + 1) in
-       let (tag_b, next_tag) = help body (next_tag + 1) in
+       let (tag_i, next_tag) = tag_expr init (cur + 1) in
+       let (tag_b, next_tag) = tag_expr body (next_tag + 1) in
        (ELet (id, tag_i, tag_b, next_tag), next_tag)
     | EIf (c, thn, els, _) ->
-      let (tag_c, next_tag) = help c (cur + 1) in
-      let (tag_t, next_tag) = help thn (next_tag + 1) in
-      let (tag_e, next_tag) = help els (next_tag + 1) in
-        (EIf (tag_c, tag_t, tag_e, cur), next_tag)
+       let (tag_c, next_tag) = tag_expr c (cur + 1) in
+       let (tag_t, next_tag) = tag_expr thn (next_tag + 1) in
+       let (tag_e, next_tag) = tag_expr els (next_tag + 1) in
+       (EIf (tag_c, tag_t, tag_e, cur), next_tag)
     | EApp (f, a, _) ->
-       let (tag_a, next_tag) = help a (cur + 1) in
+       let (tag_a, next_tag) = tag_expr a (cur + 1) in
        (EApp (f, tag_a, cur), next_tag)
-    (* | _ -> failwith "No se tagear eso" *)
+  (* | _ -> failwith "No se tagear eso" *)
+  and  tag_dfun (d : 'a decl) (cur : tag) : (tag decl * tag) =
+    match d with
+    | DFun (f, a, b, _) -> 
+       let (tagged, next_tag) = tag_expr b (cur + 1) in
+       (DFun (f, a, tagged, next_tag), next_tag)
+
+
   in
-  let (tagged, _) = help e 1 in tagged;;
+  match p with
+  | Program (ds, e) -> 
+     let rec help (ds, cur) =
+       match ds with
+       | [] -> ([], cur)
+       | d :: ds -> 
+          let next_tag = cur + 1 in
+          let (tagged_d, next_tag) = tag_dfun d next_tag in
+          let (tagged_ds, next_tag) = help (ds, next_tag) in
+          (tagged_d :: tagged_ds, next_tag)
+     in
+     let (tagged_ds, next_tag) = help (ds, 1) in
+     let (tagged_e, _) = tag_expr e next_tag in
+     Program (tagged_ds, tagged_e)
 
 (* Some OCaml boilerplate for reading files and command-line arguments *)
 (* Use code from https://mukulrathi.com/create-your-own-programming-language/parsing-ocamllex-menhir/ to catch syntax errors *)
@@ -216,8 +272,8 @@ let () =
   close_in input_file;
   match maybe_program with
   | Ok input_program ->
-     let tagged = tag input_program in
-     let anfed = anf tagged in
+     let tagged = tag_program input_program in
+     let anfed = anf_program tagged in
      let program = (compile_prog anfed) in
      printf "%s\n" program
   | Error e -> eprintf "%s" (Core.Error.to_string_hum e) ; exit 1
