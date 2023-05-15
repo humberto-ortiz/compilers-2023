@@ -18,18 +18,17 @@
 %token IF
 %token LET
 %token DEF
-%token MARK
 
 %start <'a Syntax.program> program
 %%
 
 program:
   | e = expr { Program ([], e) }
-  | ds = decls MARK e = expr { Syntax.Program (ds, e) }
+  | ds = decls e = expr { Syntax.Program (ds, e) }
 
 decls:
   | d = decl { [d] }
-  | d = decl ds = decls { d :: ds }
+  | ds = decls d = decl { ds @ [d] }
 
 decl:
   | LPAREN DEF f = ID a = ID b = expr RPAREN
